@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>ACRO MKT WMS</title>
+<style>
+:root{
+  --bg:#0f1117;--bg2:#181c27;--bg3:#1f2435;--border:#2a3048;
+  --accent:#4f8ef7;--accent2:#7c5cfc;--success:#2ecc71;--warn:#f39c12;--danger:#e74c3c;--info:#3498db;
+  --text:#e8eaf0;--text2:#9aa3b5;--text3:#4a5568;
+  --radius:8px;--radius-lg:12px;
+  --font:system-ui,-apple-system,sans-serif;
+  --fs-base:15px;--fs-sm:13px;--fs-xs:12px;--fs-lg:17px;--fs-xl:22px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;font-size:var(--fs-base)}
+
+#auth-screen{display:flex;align-items:center;justify-content:center;min-height:100vh}
+.auth-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:2.5rem;width:380px;text-align:center}
+.auth-logo{font-size:30px;font-weight:700;letter-spacing:-0.5px;margin-bottom:8px}
+.auth-logo span{color:var(--accent)}
+.auth-sub{color:var(--text2);font-size:var(--fs-base);margin-bottom:2rem;line-height:1.6}
+.auth-input{width:100%;padding:12px 14px;font-size:var(--fs-lg);border:1px solid var(--border);border-radius:var(--radius);background:var(--bg3);color:var(--text);text-align:center;letter-spacing:4px;margin-bottom:12px;font-family:var(--font)}
+.auth-input:focus{outline:none;border-color:var(--accent)}
+.auth-btn{width:100%;padding:13px;background:var(--accent);border:none;border-radius:var(--radius);color:#fff;font-size:var(--fs-base);font-weight:600;cursor:pointer;transition:opacity .2s}
+.auth-btn:hover{opacity:.88}
+.auth-err{color:var(--danger);font-size:var(--fs-sm);margin-top:8px}
+.auth-note{margin-top:1rem;font-size:var(--fs-xs);color:var(--text3)}
+
+#app{display:none;flex-direction:column;min-height:100vh}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:.875rem 1.5rem;background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50}
+.logo{font-size:var(--fs-lg);font-weight:700;letter-spacing:-.3px}.logo span{color:var(--accent)}
+.topbar-right{display:flex;align-items:center;gap:10px}
+.role-toggle{display:flex;background:var(--bg3);border:1px solid var(--border);border-radius:20px;overflow:hidden}
+.role-btn{padding:6px 16px;font-size:var(--fs-sm);border:none;background:transparent;cursor:pointer;color:var(--text2);transition:all .2s;font-family:var(--font)}
+.role-btn.active{background:var(--accent);color:#fff}
+.sync-chip{display:flex;align-items:center;gap:6px;font-size:var(--fs-xs);color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:4px 10px}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:var(--text3);flex-shrink:0}
+.sync-dot.ok{background:var(--success)}
+.sync-dot.syncing{background:var(--warn);animation:pulse .8s infinite}
+.sync-dot.err{background:var(--danger)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+.main{display:flex;flex:1}
+.sidebar{width:210px;background:var(--bg2);border-right:1px solid var(--border);padding:1rem 0;flex-shrink:0}
+.nav-section{padding:.5rem 1.25rem .25rem;font-size:var(--fs-xs);font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.8px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:.7rem 1.25rem;font-size:var(--fs-base);color:var(--text2);cursor:pointer;transition:all .15s;border-left:2px solid transparent}
+.nav-item:hover{color:var(--text);background:var(--bg3)}
+.nav-item.active{color:var(--accent);border-left-color:var(--accent);background:rgba(79,142,247,.08)}
+.content{flex:1;padding:1.5rem;overflow-y:auto}
+
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:1.5rem}
+.metric{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.125rem}
+.metric-label{font-size:var(--fs-sm);color:var(--text2);margin-bottom:6px}
+.metric-val{font-size:26px;font-weight:700;line-height:1}
+.metric-val.warn{color:var(--warn)}.metric-val.danger{color:var(--danger)}.metric-val.ok{color:var(--success)}.metric-val.info{color:var(--info)}
+
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.125rem 1.25rem;margin-bottom:1rem}
+.card-title{font-size:var(--fs-base);font-weight:600;margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;gap:8px}
+
+.tbl-wrap{overflow-x:auto}
+.tbl{width:100%;border-collapse:collapse;font-size:var(--fs-sm);table-layout:fixed}
+.tbl th{text-align:left;font-size:var(--fs-xs);font-weight:600;color:var(--text3);padding:6px 10px;border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:.5px}
+.tbl td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:middle;word-break:break-word}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:var(--bg3)}
+.tbl tr.sel-row td{background:rgba(79,142,247,.08)}
+
+.badge{display:inline-block;padding:3px 9px;border-radius:4px;font-size:var(--fs-xs);font-weight:500;white-space:nowrap}
+.b-yes{background:rgba(46,204,113,.15);color:#2ecc71}
+.b-low{background:rgba(243,156,18,.15);color:#f39c12}
+.b-out{background:rgba(231,76,60,.15);color:#e74c3c}
+.b-pending{background:rgba(243,156,18,.12);color:#e6a817}
+.b-picking{background:rgba(52,152,219,.15);color:#3498db}
+.b-done{background:rgba(46,204,113,.15);color:#2ecc71}
+.b-cancelled{background:rgba(100,100,120,.15);color:#888}
+.b-equip{background:rgba(124,92,252,.15);color:#9b7ef7}
+
+.btn{padding:8px 15px;font-size:var(--fs-sm);border:1px solid var(--border);border-radius:var(--radius);background:transparent;cursor:pointer;color:var(--text);white-space:nowrap;transition:all .15s;font-family:var(--font)}
+.btn:hover{background:var(--bg3)}
+.btn-p{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-p:hover{opacity:.88}
+.btn-sm{padding:5px 11px;font-size:var(--fs-xs)}
+.btn-success{color:var(--success);border-color:rgba(46,204,113,.4)}
+.btn-success:hover{background:rgba(46,204,113,.1)}
+.btn-warn{color:var(--warn);border-color:rgba(243,156,18,.4)}
+.btn-warn:hover{background:rgba(243,156,18,.1)}
+.btn-danger{color:var(--danger);border-color:rgba(231,76,60,.4)}
+.btn-danger:hover{background:rgba(231,76,60,.1)}
+
+.field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+.field label{font-size:var(--fs-sm);color:var(--text2);font-weight:500}
+.field input,.field select{padding:9px 11px;font-size:var(--fs-base);border:1px solid var(--border);border-radius:var(--radius);background:var(--bg3);color:var(--text);width:100%;font-family:var(--font)}
+.field input:focus,.field select:focus{outline:none;border-color:var(--accent)}
+.form2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+.toolbar{display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap}
+.toolbar input,.toolbar select{padding:8px 11px;font-size:var(--fs-sm);border:1px solid var(--border);border-radius:var(--radius);background:var(--bg3);color:var(--text);font-family:var(--font)}
+.toolbar input{flex:1;min-width:140px}
+
+.subtabs{display:flex;gap:6px;margin-bottom:1rem;flex-wrap:wrap}
+.subtab{padding:6px 15px;font-size:var(--fs-sm);border:1px solid var(--border);border-radius:20px;background:transparent;cursor:pointer;color:var(--text2);transition:all .15s;font-family:var(--font)}
+.subtab.active{background:var(--accent);border-color:var(--accent);color:#fff}
+
+.req-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1rem 1.25rem;margin-bottom:.75rem;cursor:pointer;transition:border-color .15s}
+.req-card:hover{border-color:var(--accent)}
+.req-card-header{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.req-card-title{font-size:var(--fs-base);font-weight:600;flex:1}
+.req-card-meta{font-size:var(--fs-sm);color:var(--text2)}
+
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:flex-start;justify-content:center;padding:2rem 1rem;z-index:100;overflow-y:auto}
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);width:100%;max-width:620px;padding:1.5rem}
+.modal-title{font-size:var(--fs-lg);font-weight:600;margin-bottom:1rem}
+.modal-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);flex-wrap:wrap}
+
+.prog-bar{height:5px;background:var(--bg3);border-radius:3px;overflow:hidden;margin-bottom:.5rem}
+.prog-fill{height:100%;background:var(--success);border-radius:3px}
+.alert-warn{padding:10px 14px;border-radius:var(--radius);font-size:var(--fs-sm);margin-bottom:.75rem;background:rgba(243,156,18,.1);color:var(--warn);border:1px solid rgba(243,156,18,.25);line-height:1.6}
+.alert-danger{padding:12px 14px;border-radius:var(--radius);font-size:var(--fs-sm);margin-top:.75rem;background:rgba(231,76,60,.1);color:var(--danger);border:1px solid rgba(231,76,60,.25);line-height:1.7}
+.alert-info{padding:10px 14px;border-radius:var(--radius);font-size:var(--fs-sm);margin-bottom:.75rem;background:rgba(52,152,219,.1);color:var(--info);border:1px solid rgba(52,152,219,.25);line-height:1.6}
+.edit-mode-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(79,142,247,.1);border-radius:var(--radius);margin-bottom:.75rem;font-size:var(--fs-sm);color:var(--accent);border:1px solid rgba(79,142,247,.2)}
+.sec-label{font-size:var(--fs-xs);font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:.5rem;margin-top:.5rem}
+
+.pick-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+.pick-item:last-child{border-bottom:none}
+.pick-check{width:17px;height:17px;cursor:pointer;accent-color:var(--accent)}
+.pick-name{flex:1;font-size:var(--fs-base)}
+.pick-qty{font-size:var(--fs-base);font-weight:600;min-width:40px;text-align:right}
+.pick-stock{font-size:var(--fs-sm);color:var(--text2);min-width:65px;text-align:right}
+.pick-done{text-decoration:line-through;color:var(--text3)}
+
+.edit-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.edit-row:last-child{border-bottom:none}
+.edit-name{flex:1;font-size:var(--fs-base);min-width:120px}
+.edit-qty{width:65px;padding:5px 8px;font-size:var(--fs-base);border:1px solid var(--border);border-radius:5px;background:var(--bg3);color:var(--text)}
+.del-btn{padding:4px 10px;font-size:var(--fs-xs);border:1px solid rgba(231,76,60,.4);border-radius:5px;background:transparent;cursor:pointer;color:var(--danger);font-family:var(--font)}
+.del-btn:hover{background:rgba(231,76,60,.1)}
+.del-btn.undo{border-color:var(--border);color:var(--text2)}
+.del-btn.undo:hover{background:var(--bg3)}
+.row-deleted{opacity:.35;text-decoration:line-through}
+
+.item-grid{display:flex;flex-direction:column;max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius)}
+.item-row{display:flex;align-items:center;gap:8px;padding:9px 11px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s}
+.item-row:last-child{border-bottom:none}
+.item-row:hover{background:var(--bg3)}
+.item-row.sel{background:rgba(79,142,247,.1)}
+.item-row.disabled{opacity:.4;pointer-events:none}
+.item-row input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--accent)}
+.item-row-name{flex:1;font-size:var(--fs-sm)}
+.item-row-stock{font-size:var(--fs-xs);color:var(--text2);white-space:nowrap}
+.qty-inp{width:58px;padding:4px 7px;font-size:var(--fs-sm);border:1px solid var(--border);border-radius:5px;background:var(--bg3);color:var(--text);font-family:var(--font)}
+
+.lend-record{padding:10px 14px;border-radius:var(--radius);background:var(--bg3);margin-bottom:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.lend-record-main{flex:1}
+.lend-record-event{font-weight:600;font-size:var(--fs-base)}
+.lend-record-meta{color:var(--text2);font-size:var(--fs-sm);margin-top:2px}
+
+.restock-bar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(46,204,113,.08);border:1px solid rgba(46,204,113,.2);border-radius:var(--radius);margin-bottom:1rem;flex-wrap:wrap}
+.restock-bar span{font-size:var(--fs-sm);color:var(--success);flex:1}
+.restock-qty-inp{width:72px;padding:6px 9px;font-size:var(--fs-base);border:1px solid rgba(46,204,113,.3);border-radius:var(--radius);background:var(--bg3);color:var(--text);font-family:var(--font)}
+.inv-chk{width:15px;height:15px;cursor:pointer;accent-color:var(--accent)}
+
+.empty{text-align:center;padding:3rem;color:var(--text3);font-size:var(--fs-base)}
+.toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:11px 22px;border-radius:var(--radius);font-size:var(--fs-base);z-index:999;opacity:0;transition:opacity .25s;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.4)}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<div id="auth-screen">
+  <div class="auth-box">
+    <div class="auth-logo">ACRO <span>WMS</span></div>
+    <div class="auth-sub">市场部物料管理系统<br/>请输入访问码</div>
+    <input type="password" class="auth-input" id="access-code" placeholder="_ _ _ _ _" maxlength="10"
+      onkeydown="if(event.key==='Enter')checkCode()"/>
+    <button class="auth-btn" onclick="checkCode()">进入系统</button>
+    <div class="auth-err" id="auth-err"></div>
+    <div class="auth-note">仅供 ACRO Biosystems 市场部内部使用</div>
+  </div>
+</div>
+
+<div id="app">
+  <div class="topbar">
+    <div class="logo">ACRO <span>WMS</span></div>
+    <div class="topbar-right">
+      <div class="role-toggle">
+        <button class="role-btn" id="r-mkt" onclick="setRole('mkt')">市场部</button>
+        <button class="role-btn active" id="r-log" onclick="setRole('logistics')">物流</button>
+      </div>
+      <div class="sync-chip">
+        <div class="sync-dot" id="sync-dot"></div>
+        <span id="sync-status">本地模式</span>
+      </div>
+    </div>
+  </div>
+  <div class="main">
+    <div class="sidebar" id="sidebar"></div>
+    <div class="content" id="content"></div>
+  </div>
+</div>
+<div id="modal-root"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════
+// 访问码 — 修改这里
+// ══════════════════════════════
+var ACCESS_CODE = 'acro2026';
+
+function checkCode() {
+  var input = document.getElementById('access-code').value.trim();
+  if (input === ACCESS_CODE) {
+    document.getElementById('auth-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    document.getElementById('app').style.flexDirection = 'column';
+    sessionStorage.setItem('wms_auth', '1');
+    initApp();
+  } else {
+    document.getElementById('auth-err').textContent = '访问码不正确，请重试';
+    document.getElementById('access-code').value = '';
+    document.getElementById('access-code').focus();
+  }
+}
+
+// 检查是否已登录
+if (sessionStorage.getItem('wms_auth') === '1') {
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  document.getElementById('app').style.flexDirection = 'column';
+}
+
+// ══════════════════════════════
+// GitHub Gist 同步存储
+// ══════════════════════════════
+var GIST_ID = '8677871f0837a1bb495cd1381534f685';
+var GIST_FILE = 'wms_data.json';
+var GIST_TOKEN = localStorage.getItem('wms_gist_token') || '';
+var saveTimer = null;
+
+function setSyncStatus(state, msg) {
+  var dot = document.getElementById('sync-dot');
+  dot.className = 'sync-dot' + (state==='ok'?' ok':state==='syncing'?' syncing':state==='err'?' err':'');
+  document.getElementById('sync-status').textContent = msg;
+}
+
+function loadData() {
+  GIST_TOKEN = localStorage.getItem('wms_gist_token') || '';
+  if (!GIST_TOKEN) {
+    var t = prompt('首次使用请输入同步Token（仅需输入一次）：');
+    if (t && t.trim()) {
+      localStorage.setItem('wms_gist_token', t.trim());
+      GIST_TOKEN = t.trim();
+    } else {
+      var cached = localStorage.getItem('wms_cache');
+      initData(cached ? JSON.parse(cached) : null);
+      setSyncStatus('err', '未输入Token，离线模式');
+      return;
+    }
+  }
+  setSyncStatus('syncing', '加载数据...');
+  fetch('https://api.github.com/gists/' + GIST_ID, {
+    headers: {
+      'Authorization': 'token ' + GIST_TOKEN,
+      'Accept': 'application/vnd.github.v3+json'
+    }
+  }).then(function(r) {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }).then(function(gist) {
+    var raw = gist.files[GIST_FILE].content;
+    var data = JSON.parse(raw);
+    if (data && data.inv) {
+      initData(data);
+      setSyncStatus('ok', '已同步 ' + new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}));
+    } else {
+      initData(null);
+      setSyncStatus('ok', '数据已就绪');
+    }
+  }).catch(function(e) {
+    console.error('Load error:', e);
+    var cached = localStorage.getItem('wms_cache');
+    initData(cached ? JSON.parse(cached) : null);
+    setSyncStatus('err', '离线模式（本地缓存）');
+  });
+}
+
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveData, 2000);
+}
+
+function saveData() {
+  var snapshot = JSON.stringify({inv:INV,eq:EQ,reqs:REQS,logs:LOGS,ts:Date.now()});
+  localStorage.setItem('wms_cache', snapshot);
+  setSyncStatus('syncing', '保存中...');
+  fetch('https://api.github.com/gists/' + GIST_ID, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': 'token ' + GIST_TOKEN,
+      'Accept': 'application/vnd.github.v3+json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      files: { 'wms_data.json': { content: snapshot } }
+    })
+  }).then(function(r) {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    setSyncStatus('ok', '已保存 ' + new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}));
+  }).catch(function(e) {
+    console.error('Save error:', e);
+    setSyncStatus('err', '保存失败，已存本地');
+  });
+}
+
+// ══════════════════════════════
+// 数据
+// ══════════════════════════════
+var INV,EQ,REQS,LOGS,reqCounter,invIdCounter,lendIdCounter;
+
+function initData(saved) {
+  if (saved && saved.inv) {
+    INV=saved.inv;EQ=saved.eq;REQS=saved.reqs;LOGS=saved.logs;
+    reqCounter=REQS.length?Math.max.apply(null,REQS.map(function(r){return r.id;}))+1:1;
+    invIdCounter=2000;lendIdCounter=2000;
+  } else {
+    reqCounter=1;invIdCounter=1000;lendIdCounter=1000;
+    INV=[
+      {id:'EN-1',name:'ACRO Stands By You - BsAb Development',cat:'宣传册',qty:25,low:10},
+      {id:'EN-2',name:'[Brochure] ComboX - Universal Solutions',cat:'宣传册',qty:44,low:10},
+      {id:'EN-3',name:'Mogengel Matrix - Acro Certify',cat:'宣传册',qty:25,low:10},
+      {id:'EN-4',name:'Aneuro - Advance Neuroscience Research',cat:'宣传册',qty:17,low:10},
+      {id:'EN-5',name:'Full Length Active Gallery',cat:'宣传册',qty:16,low:10},
+      {id:'EN-6',name:'Immune Checkpoint Proteins',cat:'宣传册',qty:49,low:10},
+      {id:'EN-7',name:'Make the Transition into GMP',cat:'宣传册',qty:23,low:10},
+      {id:'EN-8',name:'Cytokines',cat:'宣传册',qty:37,low:10},
+      {id:'EN-9',name:'[Brochure] Solutions of Immune Cell Therapy',cat:'宣传册',qty:25,low:10},
+      {id:'EN-10',name:'Anti-FMC63 antibody - Anti-CD19 CAR',cat:'宣传册',qty:40,low:10},
+      {id:'EN-17',name:'Antibody-Drug Conjugates (ADCs)',cat:'宣传册',qty:3,low:10},
+      {id:'EN-18',name:'Product Catalogue',cat:'宣传册',qty:9,low:10},
+      {id:'EN-43',name:'[Flyer] GMP Grade Laminin 521',cat:'宣传册',qty:5,low:10},
+      {id:'EN-83',name:'Comarketing Promotion',cat:'宣传册',qty:60,low:10},
+      {id:'EN-85',name:'[Flyer] Company Introduction and Product',cat:'宣传册',qty:60,low:10},
+      {id:'EN-88',name:'Solutions for Rabies Virus Vaccine Dev.',cat:'宣传册',qty:80,low:10},
+      {id:'EN-118',name:'Cutting-Edge TR-FRET Solutions',cat:'宣传册',qty:9,low:10},
+      {id:'EN-130',name:'Bridging ELISA Kits',cat:'宣传册',qty:2,low:10},
+      {id:'EN-131',name:'Laminin 521 Protein - Flagship Series',cat:'宣传册',qty:60,low:10},
+      {id:'EN-132',name:'TR-FRET Toolbox Experimental Guide',cat:'宣传册',qty:52,low:10},
+      {id:'gift-1',name:'瑜伽垫',cat:'礼品',qty:4,low:2},
+      {id:'gift-2',name:'团子枕头',cat:'礼品',qty:2,low:1},
+      {id:'gift-3',name:'Chill with Acro pin',cat:'礼品',qty:1,low:1},
+      {id:'bio-1',name:'bioSeedin Gift bag',cat:'bioSeedin',qty:30,low:5},
+      {id:'bio-2',name:'bioSeedin Table cloth',cat:'bioSeedin',qty:3,low:1},
+      {id:'bio-3',name:'bioSeedin Labubu',cat:'bioSeedin',qty:4,low:2},
+      {id:'bio-4',name:'bioSeedin Flyer stand',cat:'bioSeedin',qty:6,low:1}
+    ];
+    EQ=[
+      {id:'eq-1',name:'易拉宝-Total solution（红）',total:1,lends:[]},
+      {id:'eq-2',name:'易拉宝-Total solution（白）',total:1,lends:[]},
+      {id:'eq-3',name:'易拉宝-GMP Reagents',total:1,lends:[]},
+      {id:'eq-4',name:'8x8快幕秀-Total solution',total:1,lends:[]},
+      {id:'eq-5',name:'43寸电视',total:1,lends:[]},
+      {id:'eq-6',name:'27寸显示器',total:1,lends:[]},
+      {id:'eq-7',name:'折叠显示屏',total:1,lends:[]},
+      {id:'eq-8',name:'6ft桌子',total:1,lends:[]},
+      {id:'eq-9',name:'ACRO桌布',total:5,lends:[]},
+      {id:'eq-10',name:'折叠椅子',total:5,lends:[]},
+      {id:'eq-11',name:'折叠透明宣传册架子',total:4,lends:[]},
+      {id:'eq-12',name:'名片架子20格',total:2,lends:[]},
+      {id:'eq-13',name:'小转盘',total:2,lends:[]},
+      {id:'eq-14',name:'讲台',total:2,lends:[]},
+      {id:'eq-15',name:'bioSeedin讲台',total:1,lends:[]},
+      {id:'eq-16',name:'8x8快幕秀-灯',total:2,lends:[]},
+      {id:'eq-17',name:'茶几',total:1,lends:[]},
+      {id:'eq-18',name:'小黑包',total:1,lends:[]}
+    ];
+    REQS=[];LOGS=[];
+  }
+  buildUI();
+}
+
+function initApp() {
+  loadData();
+}
+
+// ══════════════════════════════
+// 工具函数
+// ══════════════════════════════
+function getItem(id){for(var i=0;i<INV.length;i++){if(INV[i].id===id)return INV[i];}return null;}
+function getEq(id){for(var i=0;i<EQ.length;i++){if(EQ[i].id===id)return EQ[i];}return null;}
+function eqAvail(eq){var out=0;for(var i=0;i<eq.lends.length;i++){if(!eq.lends[i].returnedAt)out+=eq.lends[i].qty;}return eq.total-out;}
+function invSt(item){if(item.note)return'stop';if(item.qty===0)return'out';if(item.qty<item.low)return'low';return'yes';}
+function stBadge(s){var m={yes:'<span class="badge b-yes">充足</span>',low:'<span class="badge b-low">低库存</span>',out:'<span class="badge b-out">缺货</span>',stop:'<span class="badge b-cancelled">停用</span>'};return m[s]||'';}
+function rqBadge(s){var m={pending:'<span class="badge b-pending">待处理</span>',picking:'<span class="badge b-picking">拣货中</span>',done:'<span class="badge b-done">已发出</span>',cancelled:'<span class="badge b-cancelled">已取消</span>'};return m[s]||s;}
+function toast(msg){var t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(function(){t.classList.remove('show');},2200);}
+function nowDt(){var d=new Date();return d.toLocaleDateString('zh-CN',{month:'2-digit',day:'2-digit'})+' '+d.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});}
+
+// ══════════════════════════════
+// UI
+// ══════════════════════════════
+var role='logistics',currentPage='requests';
+var invSubtab='list',eqSubtab='status',restockSel={};
+var modalReqId=null,modalConfirmMode=false,modalEditMode=false,editDraft={};
+var selItems={};
+
+function buildUI(){setRole('logistics');}
+
+function setRole(r){
+  role=r;selItems={};
+  document.getElementById('r-mkt').className='role-btn'+(r==='mkt'?' active':'');
+  document.getElementById('r-log').className='role-btn'+(r==='logistics'?' active':'');
+  buildSidebar();
+  sw(role==='mkt'?'requests':'requests');
+}
+
+function buildSidebar(){
+  var items=role==='mkt'
+    ?[{id:'requests',icon:'📋',label:'我的需求'},{id:'newreq',icon:'➕',label:'新建需求'}]
+    :[{id:'requests',icon:'📋',label:'需求管理'},{id:'inventory',icon:'📦',label:'耗材库存'},{id:'equipment',icon:'🎪',label:'展会设备'},{id:'history',icon:'📜',label:'操作记录'}];
+  document.getElementById('sidebar').innerHTML='<div class="nav-section">菜单</div>'+items.map(function(i){return'<div class="nav-item" id="nav-'+i.id+'" onclick="sw(\''+i.id+'\')">'+(i.icon?i.icon+' ':'')+i.label+'</div>';}).join('');
+}
+
+function sw(name){
+  currentPage=name;
+  document.querySelectorAll('.nav-item').forEach(function(el){el.classList.remove('active');});
+  var ni=document.getElementById('nav-'+name);if(ni)ni.classList.add('active');
+  document.getElementById('modal-root').innerHTML='';
+  modalReqId=null;modalConfirmMode=false;modalEditMode=false;editDraft={};
+  var c=document.getElementById('content');
+  if(name==='requests')renderRequests(c);
+  else if(name==='newreq'){selItems={};renderNewReq(c);}
+  else if(name==='inventory'){invSubtab='list';restockSel={};renderInventory(c);}
+  else if(name==='equipment'){eqSubtab='status';renderEquipment(c);}
+  else if(name==='history')renderHistory(c);
+}
+
+// ══════════════════════════════
+// 需求单
+// ══════════════════════════════
+function renderRequests(c){
+  var pending=0,picking=0,done=0;
+  for(var i=0;i<REQS.length;i++){if(REQS[i].status==='pending')pending++;else if(REQS[i].status==='picking')picking++;else if(REQS[i].status==='done')done++;}
+  var html='<div class="metrics">'
+    +'<div class="metric"><div class="metric-label">待处理</div><div class="metric-val'+(pending>0?' warn':'')+'">'+pending+'</div></div>'
+    +'<div class="metric"><div class="metric-label">拣货中</div><div class="metric-val'+(picking>0?' info':'')+'">'+picking+'</div></div>'
+    +'<div class="metric"><div class="metric-label">已完成</div><div class="metric-val ok">'+done+'</div></div>'
+    +'</div>';
+  var show=REQS.slice().reverse();
+  if(!show.length){c.innerHTML=html+'<div class="card"><div class="empty">暂无需求单</div></div>';return;}
+  var groups={pending:[],picking:[],done:[],cancelled:[]};
+  for(var i=0;i<show.length;i++){var r=show[i];if(groups[r.status])groups[r.status].push(r);}
+  var order=role==='logistics'?['pending','picking','done','cancelled']:['pending','picking','done'];
+  var labels={pending:'待处理',picking:'拣货中',done:'已发出',cancelled:'已取消'};
+  for(var oi=0;oi<order.length;oi++){
+    var st=order[oi],list=groups[st];if(!list||!list.length)continue;
+    html+='<div class="sec-label">'+labels[st]+'</div>';
+    for(var li=0;li<list.length;li++){
+      var r=list[li],chk=0;for(var ii=0;ii<r.items.length;ii++){if(r.items[ii].checked)chk++;}
+      var eqC=0;for(var ii=0;ii<r.items.length;ii++){if(r.items[ii].isEq)eqC++;}
+      html+='<div class="req-card" onclick="openReq('+r.id+')">'
+        +'<div class="req-card-header"><span class="req-card-title">'+r.eventName+'</span>'+rqBadge(r.status)+'</div>'
+        +'<div class="req-card-meta">'+(r.eventDate?'📅 '+r.eventDate+' · ':'')+'提交人: '+r.requester+' · '+(r.items.length-eqC)+'种耗材'+(eqC?' + '+eqC+'种设备':'')+(r.status==='picking'?' · 已确认 '+chk+'/'+r.items.length:'')+(r.note?' · '+r.note:'')+'</div>'
+        +'</div>';
+    }
+  }
+  c.innerHTML=html;
+}
+
+function openReq(id){modalReqId=id;modalConfirmMode=false;modalEditMode=false;editDraft={};renderModal();}
+
+function renderModal(){
+  var id=modalReqId;
+  var r=null;for(var i=0;i<REQS.length;i++){if(REQS[i].id===id){r=REQS[i];break;}}
+  if(!r){document.getElementById('modal-root').innerHTML='';return;}
+  var chk=0;for(var i=0;i<r.items.length;i++){if(r.items[i].checked)chk++;}
+  var total=r.items.length,pct=total?Math.round(chk/total*100):0,allChecked=chk===total;
+  var warn=[];
+  for(var i=0;i<r.items.length;i++){
+    var item=r.items[i];
+    if(item.isEq){var eq=getEq(item.itemId);if(eq&&item.qty>eqAvail(eq)&&r.status!=='done')warn.push(item.name+'（需'+item.qty+'，可用'+eqAvail(eq)+'）');}
+    else{var inv=getItem(item.itemId);if(inv&&item.qty>inv.qty&&r.status!=='done')warn.push(item.name+'（需'+item.qty+'，库存'+inv.qty+'）');}
+  }
+  var itemsHtml='';
+  if(modalEditMode&&r.status==='pending'){
+    for(var i=0;i<r.items.length;i++){
+      var item=r.items[i],d=editDraft[i]||{deleted:false,qty:item.qty};
+      var avail=item.isEq?(function(it){var e=getEq(it.itemId);return e?eqAvail(e):0;})(item):(function(it){var inv=getItem(it.itemId);return inv?inv.qty:0;})(item);
+      itemsHtml+='<div class="edit-row"><span class="edit-name'+(d.deleted?' row-deleted':'')+'">'+item.name+(item.isEq?' <span class="badge b-equip" style="font-size:11px">设备</span>':'')+'</span>'
+        +'<div style="display:flex;align-items:center;gap:6px">'+(d.deleted?'<span style="font-size:12px;color:var(--danger)">已移除</span>':'<input class="edit-qty" type="number" min="1" value="'+d.qty+'" onchange="setDraftQty('+i+',this.value)"/><span style="font-size:12px;color:var(--text2)">可用:'+avail+'</span>')
+        +'<button class="del-btn'+(d.deleted?' undo":onclick="undoDel('+i+')">'+'撤回':'" onclick="markDel('+i+')">'+'移除')+'</button></div></div>';
+    }
+  } else {
+    for(var i=0;i<r.items.length;i++){
+      var item=r.items[i];
+      var avail=item.isEq?(function(it){var e=getEq(it.itemId);return e?eqAvail(e):0;})(item):(function(it){var inv=getItem(it.itemId);return inv?inv.qty:0;})(item);
+      var insuf=item.qty>avail&&r.status!=='done';
+      var chkEl=role==='logistics'&&r.status==='picking'
+        ?'<input type="checkbox" class="pick-check" '+(item.checked?'checked':'')+' onchange="toggleChk('+id+','+i+',this.checked)"/>'
+        :'<span style="width:18px;display:inline-block;text-align:center;color:var(--'+(item.checked?'success':'text3')+')">'+(item.checked?'✓':'○')+'</span>';
+      itemsHtml+='<div class="pick-item">'+chkEl
+        +'<span class="pick-name'+(item.checked?' pick-done':'')+'">'+item.name+'</span>'
+        +(item.isEq?'<span class="badge b-equip" style="font-size:11px;margin-right:4px">设备</span>':'')
+        +'<span class="pick-qty">'+item.qty+'</span>'
+        +'<span class="pick-stock" style="'+(insuf?'color:var(--danger)':'')+'">可用:'+avail+'</span>'
+        +'</div>';
+    }
+  }
+  var confirmBox='',footerHtml='<button class="btn btn-sm" onclick="closeModal()">关闭</button>',editModeBar='';
+  if(r.status==='pending'){
+    if(modalEditMode){
+      var dc=0;for(var k in editDraft){if(editDraft[k].deleted)dc++;}
+      editModeBar='<div class="edit-mode-bar"><span>编辑模式</span><span>已移除 '+dc+' 项</span></div>';
+      footerHtml='<button class="btn btn-sm" onclick="cancelEdit()">取消</button><button class="btn btn-p btn-sm" onclick="saveEdit('+id+')">保存修改</button>';
+    } else if(modalConfirmMode==='cancel'){
+      confirmBox='<div class="alert-danger">确认撤销整个需求单？<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-sm" onclick="modalConfirmMode=false;renderModal()">返回</button><button class="btn btn-sm btn-danger" onclick="doCancel('+id+')">确认撤销</button></div></div>';footerHtml='';
+    } else {
+      footerHtml='<button class="btn btn-sm btn-danger" onclick="modalConfirmMode=\'cancel\';renderModal()">撤销</button>'
+        +'<button class="btn btn-sm btn-warn" onclick="enterEdit()">修改物料</button>'
+        +'<button class="btn btn-sm" onclick="closeModal()">关闭</button>'
+        +(role==='logistics'?'<button class="btn btn-p" onclick="startPicking('+id+')">开始拣货</button>':'');
+    }
+  } else if(r.status==='picking'){
+    if(modalConfirmMode==='ship'){
+      var eqI=r.items.filter(function(x){return x.isEq;}),conI=r.items.filter(function(x){return !x.isEq;});
+      var sum='';
+      if(conI.length){sum+='<br><b>耗材（扣减库存）：</b>';for(var i=0;i<conI.length;i++){sum+='<br>· '+conI[i].name+' × '+conI[i].qty;}}
+      if(eqI.length){sum+='<br><b>设备（记录借出）：</b>';for(var i=0;i<eqI.length;i++){sum+='<br>· '+eqI[i].name+' × '+eqI[i].qty;}}
+      confirmBox='<div class="alert-danger">确认发出？'+sum+'<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-sm" onclick="modalConfirmMode=false;renderModal()">返回</button><button class="btn btn-sm btn-p" onclick="doShip('+id+')">确认发出</button></div></div>';footerHtml='';
+    } else if(modalConfirmMode==='cancel'){
+      confirmBox='<div class="alert-danger">确认取消？<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-sm" onclick="modalConfirmMode=false;renderModal()">返回</button><button class="btn btn-sm btn-danger" onclick="doCancel('+id+')">确认取消</button></div></div>';footerHtml='';
+    } else {
+      var sd=allChecked?'':'style="opacity:.4;pointer-events:none"';
+      footerHtml='<button class="btn btn-sm btn-warn" onclick="modalConfirmMode=\'cancel\';renderModal()">取消</button><button class="btn btn-sm" onclick="closeModal()">关闭</button><button class="btn btn-p" '+sd+' onclick="modalConfirmMode=\'ship\';renderModal()">确认发出</button>';
+    }
+  } else {
+    var retSection='';
+    if(role==='logistics'){
+      var eqItems=r.items.filter(function(x){return x.isEq;});
+      if(eqItems.length){
+        retSection='<div class="sec-label" style="margin-top:1rem">设备归还状态</div>';
+        for(var i=0;i<eqItems.length;i++){
+          var ei=eqItems[i],eq=getEq(ei.itemId),lend=null;
+          if(eq){for(var j=0;j<eq.lends.length;j++){if(eq.lends[j].eventId===r.id&&!eq.lends[j].returnedAt){lend=eq.lends[j];break;}}}
+          var returned=!lend;
+          retSection+='<div class="lend-record"><div class="lend-record-main"><div class="lend-record-event">'+ei.name+' × '+ei.qty+'</div><div class="lend-record-meta">'+(returned?'已归还':'借出中')+'</div></div>'+(returned?'<span class="badge b-done">已归还</span>':'<button class="btn btn-sm btn-success" onclick="returnEq(\''+ei.itemId+'\','+r.id+')">确认归还</button>')+'</div>';
+        }
+        itemsHtml+=retSection;
+      }
+    }
+    footerHtml='<button class="btn btn-sm" onclick="closeModal()">关闭</button>';
+  }
+  document.getElementById('modal-root').innerHTML='<div class="modal-overlay" onclick="if(event.target.className===\'modal-overlay\')closeModal()"><div class="modal">'
+    +'<div class="modal-title">'+r.eventName+'</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:.875rem;align-items:center">'+rqBadge(r.status)+(r.eventDate?'<span style="font-size:13px;color:var(--text2)">📅 '+r.eventDate+'</span>':'')+'<span style="font-size:13px;color:var(--text2)">提交人: '+r.requester+'</span></div>'
+    +(r.note?'<div class="alert-warn">备注: '+r.note+'</div>':'')
+    +(warn.length&&r.status==='pending'&&!modalEditMode?'<div class="alert-warn">⚠ 库存不足：'+warn.join('、')+'</div>':'')
+    +(r.status==='picking'?'<div class="prog-bar"><div class="prog-fill" style="width:'+pct+'%"></div></div><div style="font-size:12px;color:var(--text2);margin-bottom:.75rem">拣货进度 '+chk+'/'+total+'（'+pct+'%）'+(allChecked?' ✓ 全部完成':'')+'</div>':'')
+    +editModeBar+'<div class="sec-label">物料清单</div><div>'+itemsHtml+'</div>'+confirmBox
+    +'<div class="modal-footer">'+footerHtml+'</div></div></div>';
+}
+
+function closeModal(){document.getElementById('modal-root').innerHTML='';modalReqId=null;modalConfirmMode=false;modalEditMode=false;editDraft={};}
+function enterEdit(){modalEditMode=true;modalConfirmMode=false;editDraft={};var r=null;for(var i=0;i<REQS.length;i++){if(REQS[i].id===modalReqId){r=REQS[i];break;}}if(r){for(var i=0;i<r.items.length;i++){editDraft[i]={deleted:false,qty:r.items[i].qty};}}renderModal();}
+function cancelEdit(){modalEditMode=false;editDraft={};renderModal();}
+function markDel(idx){editDraft[idx]=editDraft[idx]||{};editDraft[idx].deleted=true;renderModal();}
+function undoDel(idx){editDraft[idx]=editDraft[idx]||{};editDraft[idx].deleted=false;renderModal();}
+function setDraftQty(idx,val){editDraft[idx]=editDraft[idx]||{};editDraft[idx].qty=Math.max(1,parseInt(val)||1);}
+function saveEdit(reqId){
+  var r=null;for(var i=0;i<REQS.length;i++){if(REQS[i].id===reqId){r=REQS[i];break;}}if(!r)return;
+  var ni=[];for(var i=0;i<r.items.length;i++){var d=editDraft[i]||{deleted:false,qty:r.items[i].qty};if(!d.deleted)ni.push({itemId:r.items[i].itemId,name:r.items[i].name,qty:d.qty,checked:false,isEq:r.items[i].isEq||false});}
+  if(!ni.length){toast('至少保留一种物料');return;}
+  r.items=ni;modalEditMode=false;editDraft={};renderModal();renderRequests(document.getElementById('content'));toast('✓ 需求单已更新');scheduleSave();
+}
+function toggleChk(reqId,idx,val){for(var i=0;i<REQS.length;i++){if(REQS[i].id===reqId){REQS[i].items[idx].checked=val;break;}}renderModal();}
+function startPicking(reqId){for(var i=0;i<REQS.length;i++){if(REQS[i].id===reqId){REQS[i].status='picking';REQS[i].items.forEach(function(x){x.checked=false;});break;}}modalConfirmMode=false;modalEditMode=false;editDraft={};renderModal();renderRequests(document.getElementById('content'));toast('已开始拣货');scheduleSave();}
+function doCancel(reqId){for(var i=0;i<REQS.length;i++){if(REQS[i].id===reqId){REQS[i].status='cancelled';break;}}closeModal();renderRequests(document.getElementById('content'));toast('需求单已取消');scheduleSave();}
+function doShip(reqId){
+  var r=null;for(var i=0;i<REQS.length;i++){if(REQS[i].id===reqId){r=REQS[i];break;}}if(!r)return;
+  var dt=nowDt();
+  for(var i=0;i<r.items.length;i++){
+    var item=r.items[i];
+    if(item.isEq){var eq=getEq(item.itemId);if(eq){eq.lends.push({id:lendIdCounter++,eventId:r.id,eventName:r.eventName,qty:item.qty,lentAt:dt,returnedAt:null});}LOGS.unshift({dt:dt,type:'借出',item:item.name,qty:item.qty,ref:r.eventName});}
+    else{var inv=getItem(item.itemId);if(inv){var d=Math.min(item.qty,inv.qty);inv.qty-=d;LOGS.unshift({dt:dt,type:'出库',item:item.name,qty:d,ref:r.eventName});}}
+  }
+  r.status='done';modalConfirmMode=false;closeModal();renderRequests(document.getElementById('content'));toast('✓ 已发出，库存已更新');scheduleSave();
+}
+function returnEq(eqId,reqId){
+  var eq=getEq(eqId);if(!eq)return;
+  for(var i=0;i<eq.lends.length;i++){if(eq.lends[i].eventId===reqId&&!eq.lends[i].returnedAt){eq.lends[i].returnedAt=new Date().toLocaleDateString('zh-CN',{month:'2-digit',day:'2-digit'});LOGS.unshift({dt:nowDt(),type:'归还',item:eq.name,qty:eq.lends[i].qty,ref:eq.lends[i].eventName});break;}}
+  toast('✓ 设备已归还');renderModal();scheduleSave();
+}
+
+// ══════════════════════════════
+// 新建需求
+// ══════════════════════════════
+function renderNewReq(c){
+  var cats=[];for(var i=0;i<INV.length;i++){if(!INV[i].note&&cats.indexOf(INV[i].cat)===-1)cats.push(INV[i].cat);}
+  c.innerHTML='<div class="card"><div class="card-title">展会基本信息</div>'
+    +'<div class="form2"><div class="field"><label>展会名称 *</label><input type="text" id="ev-name" placeholder="如：BIO International 2025"/></div>'
+    +'<div class="field"><label>展会日期</label><input type="date" id="ev-date"/></div></div>'
+    +'<div class="form2"><div class="field"><label>提交人 *</label><input type="text" id="ev-person" placeholder="你的姓名"/></div>'
+    +'<div class="field"><label>备注</label><input type="text" id="ev-note" placeholder="特殊需求等"/></div></div></div>'
+    +'<div class="card"><div class="card-title">选择耗材</div>'
+    +'<div class="toolbar"><input type="text" id="item-q" placeholder="搜索耗材..." oninput="filterItems()"/>'
+    +'<select id="item-cat" onchange="filterItems()"><option value="">全部类型</option>'+cats.map(function(c){return'<option value="'+c+'">'+c+'</option>';}).join('')+'</select></div>'
+    +'<div class="item-grid" id="item-grid"></div></div>'
+    +'<div class="card"><div class="card-title">选择展会设备</div>'
+    +'<div class="alert-info">设备借出不消耗库存，展会结束后由仓库确认归还。</div>'
+    +'<div class="item-grid" id="eq-grid"></div></div>'
+    +'<div class="card"><div class="card-title">已选物料</div><div class="empty" id="prev-empty">尚未选择</div><div id="prev-list"></div></div>'
+    +'<div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:1rem">'
+    +'<button class="btn" onclick="selItems={};filterItems();filterEqItems()">重置</button>'
+    +'<button class="btn btn-p" onclick="submitReq()">提交需求单</button></div>';
+  filterItems();filterEqItems();
+}
+function filterItems(){
+  var q=(document.getElementById('item-q')?document.getElementById('item-q').value:'').toLowerCase();
+  var cat=document.getElementById('item-cat')?document.getElementById('item-cat').value:'';
+  var grid=document.getElementById('item-grid');if(!grid)return;
+  var html='';
+  for(var i=0;i<INV.length;i++){
+    var item=INV[i];if(item.note)continue;
+    if(q&&item.name.toLowerCase().indexOf(q)===-1&&item.id.toLowerCase().indexOf(q)===-1)continue;
+    if(cat&&item.cat!==cat)continue;
+    var isSel=!!selItems[item.id],s=invSt(item);
+    html+='<div class="item-row'+(isSel?' sel':'')+(s==='out'&&!isSel?' disabled':'')+'" onclick="toggleItem(\''+item.id+'\',false)">'
+      +'<input type="checkbox" '+(isSel?'checked':'')+' onclick="event.stopPropagation();toggleItem(\''+item.id+'\',false)"/>'
+      +'<span class="item-row-name">'+item.id+' '+item.name+'</span>'
+      +'<span class="item-row-stock">'+(s==='yes'?'库存:'+item.qty:stBadge(s))+'</span>'
+      +(isSel?'<input type="number" class="qty-inp" value="'+selItems[item.id].qty+'" min="1" onclick="event.stopPropagation()" onchange="setQty(\''+item.id+'\',this.value,false)"/>':'')
+      +'</div>';
+  }
+  grid.innerHTML=html||'<div class="empty">无匹配物料</div>';updatePreview();
+}
+function filterEqItems(){
+  var grid=document.getElementById('eq-grid');if(!grid)return;
+  var html='';
+  for(var i=0;i<EQ.length;i++){
+    var eq=EQ[i],avail=eqAvail(eq),isSel=!!selItems['eq:'+eq.id],noAvail=avail===0&&!isSel;
+    html+='<div class="item-row'+(isSel?' sel':'')+(noAvail?' disabled':'')+'" onclick="toggleItem(\'eq:'+eq.id+'\',true)">'
+      +'<input type="checkbox" '+(isSel?'checked':'')+' onclick="event.stopPropagation();toggleItem(\'eq:'+eq.id+'\',true)"/>'
+      +'<span class="item-row-name">'+eq.name+'</span>'
+      +'<span class="item-row-stock" style="'+(avail===0?'color:var(--danger)':'')+'">可用:'+avail+'/'+eq.total+'</span>'
+      +(isSel?'<input type="number" class="qty-inp" value="'+selItems['eq:'+eq.id].qty+'" min="1" max="'+avail+'" onclick="event.stopPropagation()" onchange="setQty(\'eq:'+eq.id+'\',this.value,true)"/>':'')
+      +'</div>';
+  }
+  grid.innerHTML=html||'<div class="empty">无设备记录</div>';updatePreview();
+}
+function toggleItem(key,isEq){
+  if(selItems[key]){delete selItems[key];}
+  else{if(isEq){var eq=getEq(key.replace('eq:',''));if(eq)selItems[key]={qty:1,name:eq.name,isEq:true,realId:eq.id};}
+  else{var item=getItem(key);if(item)selItems[key]={qty:1,name:item.name,isEq:false};}}
+  if(isEq)filterEqItems();else filterItems();
+}
+function setQty(key,val,isEq){if(selItems[key])selItems[key].qty=Math.max(1,parseInt(val)||1);updatePreview();}
+function updatePreview(){
+  var keys=Object.keys(selItems),empty=document.getElementById('prev-empty'),list=document.getElementById('prev-list');
+  if(!empty||!list)return;
+  if(!keys.length){empty.style.display='block';list.innerHTML='';return;}
+  empty.style.display='none';
+  var html='';
+  for(var i=0;i<keys.length;i++){
+    var k=keys[i],s=selItems[k];
+    var avail=s.isEq?(function(sk){var e=getEq(sk.replace('eq:',''));return e?eqAvail(e):0;})(k):(function(sk){var inv=getItem(sk);return inv?inv.qty:0;})(k);
+    var warn=s.qty>avail;
+    html+='<div class="pick-item"><span class="pick-name">'+s.name+(s.isEq?' <span class="badge b-equip" style="font-size:11px">设备</span>':'')+'</span><span class="pick-qty" style="'+(warn?'color:var(--danger)':'')+'">'+s.qty+(warn?' ⚠':'')+'</span></div>';
+  }
+  list.innerHTML=html;
+}
+function submitReq(){
+  var name=(document.getElementById('ev-name').value||'').trim(),person=(document.getElementById('ev-person').value||'').trim();
+  var date=document.getElementById('ev-date').value,note=(document.getElementById('ev-note').value||'').trim();
+  if(!name){toast('请填写展会名称');return;}if(!person){toast('请填写提交人');return;}
+  var keys=Object.keys(selItems);if(!keys.length){toast('请至少选择一种物料或设备');return;}
+  var items=[];
+  for(var i=0;i<keys.length;i++){var k=keys[i],s=selItems[k];items.push({itemId:s.isEq?s.realId:k,name:s.name,qty:s.qty,checked:false,isEq:s.isEq||false});}
+  REQS.push({id:reqCounter++,eventName:name,eventDate:date,requester:person,note:note,items:items,status:'pending'});
+  selItems={};toast('✓ 需求单已提交！');scheduleSave();setTimeout(function(){sw('requests');},600);
+}
+
+// ══════════════════════════════
+// 耗材库存
+// ══════════════════════════════
+function renderInventory(c){
+  var low=0,out=0;for(var i=0;i<INV.length;i++){var s=invSt(INV[i]);if(s==='low')low++;else if(s==='out'&&!INV[i].note)out++;}
+  var cats=[];for(var i=0;i<INV.length;i++){if(cats.indexOf(INV[i].cat)===-1)cats.push(INV[i].cat);}
+  c.innerHTML='<div class="metrics">'
+    +'<div class="metric"><div class="metric-label">耗材种类</div><div class="metric-val">'+INV.length+'</div></div>'
+    +'<div class="metric"><div class="metric-label">低库存</div><div class="metric-val'+(low?' warn':'')+'">'+low+'</div></div>'
+    +'<div class="metric"><div class="metric-label">缺货</div><div class="metric-val'+(out?' danger':'')+'">'+out+'</div></div>'
+    +'</div>'
+    +'<div class="subtabs">'
+    +'<button class="subtab'+(invSubtab==='list'?' active':'')+'" onclick="switchInvTab(\'list\')">库存列表</button>'
+    +'<button class="subtab'+(invSubtab==='restock'?' active':'')+'" onclick="switchInvTab(\'restock\')">批量补货</button>'
+    +'<button class="subtab'+(invSubtab==='add'?' active':'')+'" onclick="switchInvTab(\'add\')">添加物料</button>'
+    +'</div><div id="inv-content"></div>';
+  renderInvContent();
+}
+function switchInvTab(t){invSubtab=t;restockSel={};renderInvContent();}
+function renderInvContent(){var el=document.getElementById('inv-content');if(!el)return;if(invSubtab==='list')renderInvList(el);else if(invSubtab==='restock')renderRestock(el);else if(invSubtab==='add')renderAddItem(el);}
+function renderInvList(el){
+  var cats=[];for(var i=0;i<INV.length;i++){if(cats.indexOf(INV[i].cat)===-1)cats.push(INV[i].cat);}
+  el.innerHTML='<div class="toolbar"><input type="text" id="inv-q" placeholder="搜索..." oninput="filterInv()"/>'
+    +'<select id="inv-cat" onchange="filterInv()"><option value="">全部</option>'+cats.map(function(c){return'<option value="'+c+'">'+c+'</option>';}).join('')+'</select>'
+    +'<select id="inv-st" onchange="filterInv()"><option value="">全部状态</option><option value="low">低库存</option><option value="out">缺货</option></select></div>'
+    +'<div class="card"><div class="tbl-wrap"><table class="tbl"><thead><tr>'
+    +'<th style="width:10%">编号</th><th style="width:36%">名称</th><th style="width:10%">类型</th><th style="width:9%">库存</th><th style="width:9%">预警</th><th style="width:10%">状态</th><th style="width:16%">补货</th>'
+    +'</tr></thead><tbody id="inv-body"></tbody></table></div></div>';
+  filterInv();
+}
+function filterInv(){
+  var q=(document.getElementById('inv-q')?document.getElementById('inv-q').value:'').toLowerCase();
+  var cat=document.getElementById('inv-cat')?document.getElementById('inv-cat').value:'';
+  var st=document.getElementById('inv-st')?document.getElementById('inv-st').value:'';
+  var tbody=document.getElementById('inv-body');if(!tbody)return;
+  var html='';
+  for(var i=0;i<INV.length;i++){
+    var item=INV[i],s=invSt(item);
+    if(q&&item.name.toLowerCase().indexOf(q)===-1&&item.id.toLowerCase().indexOf(q)===-1)continue;
+    if(cat&&item.cat!==cat)continue;if(st&&s!==st)continue;
+    html+='<tr><td style="font-size:12px;color:var(--text2)">'+item.id+'</td>'
+      +'<td>'+item.name+(item.note?'<br><span style="font-size:11px;color:var(--text3)">'+item.note+'</span>':'')+'</td>'
+      +'<td style="font-size:12px">'+item.cat+'</td>'
+      +'<td style="font-weight:700;'+(s==='low'||s==='out'?'color:var(--warn)':'')+'">'+item.qty+'</td>'
+      +'<td style="font-size:12px;color:var(--text2)">'+item.low+'</td>'
+      +'<td>'+stBadge(s)+'</td>'
+      +'<td style="white-space:nowrap"><input class="qty-inp" type="number" min="1" value="10" id="iq-'+i+'" style="width:52px"/>+<button class="btn btn-sm btn-success" style="margin-left:4px" onclick="quickRestock('+i+')">补</button></td>'
+      +'</tr>';
+  }
+  tbody.innerHTML=html||'<tr><td colspan="7" class="empty">无匹配结果</td></tr>';
+}
+function quickRestock(idx){
+  var el=document.getElementById('iq-'+idx);if(!el)return;
+  var add=parseInt(el.value)||0;if(add<=0){toast('请输入数量');return;}
+  LOGS.unshift({dt:nowDt(),type:'补货',item:INV[idx].name,qty:add,ref:'单条补货'});
+  INV[idx].qty+=add;renderInventory(document.getElementById('content'));toast('✓ '+INV[idx].name+' +'+add);scheduleSave();
+}
+function renderRestock(el){
+  var cats=[];for(var i=0;i<INV.length;i++){if(cats.indexOf(INV[i].cat)===-1)cats.push(INV[i].cat);}
+  var selCount=Object.keys(restockSel).length;
+  el.innerHTML=(selCount>0?'<div class="restock-bar"><span>已选 '+selCount+' 种，统一补货量：</span><input class="restock-qty-inp" type="number" id="bulk-qty" min="1" value="20"/><button class="btn btn-p btn-sm" onclick="doBulkRestock()">确认补货</button></div>':'')
+    +'<div class="card"><div class="card-title"><span>勾选需补货物料</span>'+(selCount>0?'<button class="btn btn-sm" onclick="restockSel={};renderRestock(document.getElementById(\'inv-content\'))">清除</button>':'<button class="btn btn-sm" onclick="selectLowStock()">一键选低库存</button>')+'</div>'
+    +'<div class="toolbar"><input type="text" id="rs-q" placeholder="搜索..." oninput="filterRestock()"/><select id="rs-cat" onchange="filterRestock()"><option value="">全部</option>'+cats.map(function(c){return'<option value="'+c+'">'+c+'</option>';}).join('')+'</select></div>'
+    +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th style="width:5%"></th><th style="width:10%">编号</th><th style="width:36%">名称</th><th style="width:10%">类型</th><th style="width:10%">库存</th><th style="width:10%">状态</th><th style="width:19%">补货量</th></tr></thead><tbody id="rs-body"></tbody></table></div></div>';
+  filterRestock();
+}
+function filterRestock(){
+  var q=(document.getElementById('rs-q')?document.getElementById('rs-q').value:'').toLowerCase();
+  var cat=document.getElementById('rs-cat')?document.getElementById('rs-cat').value:'';
+  var tbody=document.getElementById('rs-body');if(!tbody)return;
+  var html='';
+  for(var i=0;i<INV.length;i++){
+    var item=INV[i];if(item.note)continue;
+    if(q&&item.name.toLowerCase().indexOf(q)===-1&&item.id.toLowerCase().indexOf(q)===-1)continue;
+    if(cat&&item.cat!==cat)continue;
+    var s=invSt(item),isSel=!!restockSel[i];
+    html+='<tr class="'+(isSel?'sel-row':'')+'" onclick="toggleRestockSel('+i+')">'
+      +'<td><input type="checkbox" class="inv-chk" '+(isSel?'checked':'')+' onclick="event.stopPropagation();toggleRestockSel('+i+')"/></td>'
+      +'<td style="font-size:12px;color:var(--text2)">'+item.id+'</td>'
+      +'<td>'+item.name+'</td><td style="font-size:12px">'+item.cat+'</td>'
+      +'<td style="font-weight:700;'+(s==='low'||s==='out'?'color:var(--warn)':'')+'">'+item.qty+'</td>'
+      +'<td>'+stBadge(s)+'</td>'
+      +'<td><input class="qty-inp" type="number" min="1" value="'+(restockSel[i]||20)+'" id="rs-qty-'+i+'" onclick="event.stopPropagation()" onchange="setRestockQty('+i+',this.value)" style="width:58px"/></td>'
+      +'</tr>';
+  }
+  tbody.innerHTML=html||'<tr><td colspan="7" class="empty">无结果</td></tr>';
+}
+function toggleRestockSel(idx){if(restockSel[idx]){delete restockSel[idx];}else{restockSel[idx]=20;}renderRestock(document.getElementById('inv-content'));}
+function setRestockQty(idx,val){restockSel[idx]=Math.max(1,parseInt(val)||1);}
+function selectLowStock(){restockSel={};for(var i=0;i<INV.length;i++){var s=invSt(INV[i]);if(s==='low'||s==='out')restockSel[i]=20;}renderRestock(document.getElementById('inv-content'));}
+function doBulkRestock(){
+  var keys=Object.keys(restockSel);if(!keys.length){toast('请先勾选物料');return;}
+  var defaultQty=parseInt(document.getElementById('bulk-qty')?document.getElementById('bulk-qty').value:20)||20;
+  for(var i=0;i<keys.length;i++){
+    var idx=parseInt(keys[i]),indivEl=document.getElementById('rs-qty-'+idx);
+    var add=indivEl?Math.max(1,parseInt(indivEl.value)||defaultQty):defaultQty;
+    INV[idx].qty+=add;LOGS.unshift({dt:nowDt(),type:'补货',item:INV[idx].name,qty:add,ref:'批量补货'});
+  }
+  restockSel={};toast('✓ 批量补货完成，共 '+keys.length+' 种');renderInventory(document.getElementById('content'));scheduleSave();
+}
+function renderAddItem(el){
+  var cats=['宣传册','礼品','bioSeedin'];
+  el.innerHTML='<div class="card"><div class="card-title">添加新耗材</div>'
+    +'<div class="form2"><div class="field"><label>物料名称 *</label><input type="text" id="add-name" placeholder="物料名称"/></div>'
+    +'<div class="field"><label>自定义编号</label><input type="text" id="add-id" placeholder="可留空自动生成"/></div></div>'
+    +'<div class="form2"><div class="field"><label>类型 *</label><select id="add-cat"><option value="">请选择</option>'+cats.map(function(c){return'<option value="'+c+'">'+c+'</option>';}).join('')+'</select></div>'
+    +'<div class="field"><label>初始数量</label><input type="number" id="add-qty" min="0" value="0"/></div></div>'
+    +'<div class="form2"><div class="field"><label>低库存预警值</label><input type="number" id="add-low" min="0" value="10"/></div>'
+    +'<div class="field"><label>备注</label><input type="text" id="add-note" placeholder="可留空"/></div></div>'
+    +'<button class="btn btn-p" onclick="doAddItem()">添加</button></div>';
+}
+function doAddItem(){
+  var name=(document.getElementById('add-name').value||'').trim(),customId=(document.getElementById('add-id').value||'').trim();
+  var cat=document.getElementById('add-cat').value,qty=parseInt(document.getElementById('add-qty').value)||0;
+  var low=parseInt(document.getElementById('add-low').value)||10,note=(document.getElementById('add-note').value||'').trim();
+  if(!name){toast('请填写物料名称');return;}if(!cat){toast('请选择类型');return;}
+  var newId=customId||('NEW-'+(++invIdCounter));
+  if(customId&&getItem(customId)){toast('编号已存在');return;}
+  var ni={id:newId,name:name,cat:cat,qty:qty,low:low};if(note)ni.note=note;
+  INV.push(ni);if(qty>0)LOGS.unshift({dt:nowDt(),type:'补货',item:name,qty:qty,ref:'新增'});
+  document.getElementById('add-name').value='';document.getElementById('add-id').value='';
+  document.getElementById('add-cat').value='';document.getElementById('add-qty').value=0;
+  document.getElementById('add-low').value=10;document.getElementById('add-note').value='';
+  toast('✓ 已添加：'+name);renderInventory(document.getElementById('content'));scheduleSave();
+}
+
+// ══════════════════════════════
+// 展会设备
+// ══════════════════════════════
+function renderEquipment(c){
+  var totalOut=0,pending=0;
+  for(var i=0;i<EQ.length;i++){var a=eqAvail(EQ[i]);totalOut+=(EQ[i].total-a);for(var j=0;j<EQ[i].lends.length;j++){if(!EQ[i].lends[j].returnedAt)pending++;}}
+  c.innerHTML='<div class="metrics">'
+    +'<div class="metric"><div class="metric-label">设备种类</div><div class="metric-val">'+EQ.length+'</div></div>'
+    +'<div class="metric"><div class="metric-label">当前借出</div><div class="metric-val'+(totalOut>0?' warn':'')+'">'+totalOut+'</div></div>'
+    +'<div class="metric"><div class="metric-label">待归还</div><div class="metric-val'+(pending>0?' warn':'')+'">'+pending+'</div></div>'
+    +'</div>'
+    +'<div class="subtabs">'
+    +'<button class="subtab'+(eqSubtab==='status'?' active':'')+'" onclick="eqSw(\'status\')">设备状态</button>'
+    +'<button class="subtab'+(eqSubtab==='lent'?' active':'')+'" onclick="eqSw(\'lent\')">借出记录</button>'
+    +'<button class="subtab'+(eqSubtab==='add'?' active':'')+'" onclick="eqSw(\'add\')">添加设备</button>'
+    +'</div><div id="eq-content"></div>';
+  renderEqContent();
+}
+function eqSw(t){eqSubtab=t;renderEqContent();}
+function renderEqContent(){var el=document.getElementById('eq-content');if(!el)return;if(eqSubtab==='status')renderEqStatus(el);else if(eqSubtab==='lent')renderEqLent(el);else if(eqSubtab==='add')renderEqAdd(el);}
+function renderEqStatus(el){
+  var html='<div class="card"><div class="tbl-wrap"><table class="tbl"><thead><tr><th style="width:35%">设备</th><th style="width:10%">总数</th><th style="width:10%">可用</th><th style="width:10%">占用</th><th style="width:35%">当前占用展会</th></tr></thead><tbody>';
+  for(var i=0;i<EQ.length;i++){
+    var eq=EQ[i],avail=eqAvail(eq),out=eq.total-avail;
+    var active=[];for(var j=0;j<eq.lends.length;j++){if(!eq.lends[j].returnedAt)active.push(eq.lends[j]);}
+    html+='<tr><td style="font-weight:500">'+eq.name+'</td><td>'+eq.total+'</td>'
+      +'<td style="font-weight:700;color:var('+(avail===0?'--danger':avail<eq.total?'--warn':'--success')+')">'+avail+'</td>'
+      +'<td style="font-weight:700;color:var('+(out>0?'--warn':'--text2')+')">'+out+'</td>'
+      +'<td style="font-size:12px;color:var(--text2)">'+(active.length?active.map(function(l){return l.eventName+'(×'+l.qty+')';}).join('、'):'-')+'</td></tr>';
+  }
+  el.innerHTML=html+'</tbody></table></div></div>';
+}
+function renderEqLent(el){
+  var all=[];
+  for(var i=0;i<EQ.length;i++){for(var j=0;j<EQ[i].lends.length;j++){all.push({eq:EQ[i],lend:EQ[i].lends[j]});}}
+  var pending=all.filter(function(x){return !x.lend.returnedAt;});
+  var returned=all.filter(function(x){return x.lend.returnedAt;});
+  var html='';
+  if(pending.length){
+    html+='<div class="sec-label">待归还（'+pending.length+'条）</div>';
+    for(var i=0;i<pending.length;i++){
+      var p=pending[i];
+      html+='<div class="lend-record"><div class="lend-record-main"><div class="lend-record-event">'+p.eq.name+' × '+p.lend.qty+'</div><div class="lend-record-meta">借给：'+p.lend.eventName+' · 借出：'+p.lend.lentAt+'</div></div><button class="btn btn-sm btn-success" onclick="returnEqDirect(\''+p.eq.id+'\','+p.lend.id+')">确认归还</button></div>';
+    }
+  }
+  if(returned.length){
+    html+='<div class="sec-label" style="margin-top:1rem">已归还历史</div>';
+    for(var i=0;i<returned.length;i++){
+      var p=returned[i];
+      html+='<div class="lend-record"><div class="lend-record-main"><div class="lend-record-event">'+p.eq.name+' × '+p.lend.qty+'</div><div class="lend-record-meta">借给：'+p.lend.eventName+' · 借出：'+p.lend.lentAt+' · 归还：'+p.lend.returnedAt+'</div></div><span class="badge b-done">已归还</span></div>';
+    }
+  }
+  if(!all.length)html='<div class="card"><div class="empty">暂无借出记录</div></div>';
+  el.innerHTML=html;
+}
+function returnEqDirect(eqId,lendId){
+  var eq=getEq(eqId);if(!eq)return;
+  for(var i=0;i<eq.lends.length;i++){if(eq.lends[i].id===lendId&&!eq.lends[i].returnedAt){eq.lends[i].returnedAt=new Date().toLocaleDateString('zh-CN',{month:'2-digit',day:'2-digit'});LOGS.unshift({dt:nowDt(),type:'归还',item:eq.name,qty:eq.lends[i].qty,ref:eq.lends[i].eventName});break;}}
+  toast('✓ 设备已归还');renderEquipment(document.getElementById('content'));scheduleSave();
+}
+function renderEqAdd(el){
+  el.innerHTML='<div class="card"><div class="card-title">添加新设备</div>'
+    +'<div class="form2"><div class="field"><label>设备名称 *</label><input type="text" id="eq-add-name" placeholder="设备名称"/></div>'
+    +'<div class="field"><label>数量</label><input type="number" id="eq-add-total" min="1" value="1"/></div></div>'
+    +'<button class="btn btn-p" onclick="doAddEq()">添加</button></div>';
+}
+function doAddEq(){
+  var name=(document.getElementById('eq-add-name').value||'').trim(),total=parseInt(document.getElementById('eq-add-total').value)||1;
+  if(!name){toast('请填写名称');return;}
+  EQ.push({id:'eq-'+(++invIdCounter),name:name,total:total,lends:[]});
+  document.getElementById('eq-add-name').value='';document.getElementById('eq-add-total').value=1;
+  toast('✓ 已添加：'+name);renderEquipment(document.getElementById('content'));scheduleSave();
+}
+
+// ══════════════════════════════
+// 操作记录
+// ══════════════════════════════
+function renderHistory(c){
+  c.innerHTML='<div class="toolbar"><input type="text" id="log-q" placeholder="搜索..." oninput="filterLog()"/>'
+    +'<select id="log-t" onchange="filterLog()"><option value="">全部</option><option value="出库">出库</option><option value="借出">设备借出</option><option value="归还">设备归还</option><option value="补货">补货</option></select></div>'
+    +'<div class="card"><div class="tbl-wrap"><table class="tbl"><thead><tr><th style="width:18%">时间</th><th style="width:12%">类型</th><th style="width:40%">物料</th><th style="width:10%">数量</th><th style="width:20%">展会</th></tr></thead><tbody id="log-body"></tbody></table></div></div>';
+  filterLog();
+}
+function filterLog(){
+  var q=(document.getElementById('log-q')?document.getElementById('log-q').value:'').toLowerCase();
+  var t=document.getElementById('log-t')?document.getElementById('log-t').value:'';
+  var tbody=document.getElementById('log-body');if(!tbody)return;
+  var html='';
+  for(var i=0;i<LOGS.length;i++){
+    var l=LOGS[i];
+    if(q&&l.item.toLowerCase().indexOf(q)===-1&&(l.ref||'').toLowerCase().indexOf(q)===-1)continue;
+    if(t&&l.type!==t)continue;
+    var bc=l.type==='出库'?'b-out':l.type==='借出'?'b-pending':l.type==='归还'?'b-done':'b-yes';
+    html+='<tr><td style="font-size:12px;color:var(--text2)">'+l.dt+'</td><td><span class="badge '+bc+'">'+l.type+'</span></td><td>'+l.item+'</td><td style="font-weight:700">'+l.qty+'</td><td style="font-size:12px;color:var(--text2)">'+(l.ref||'-')+'</td></tr>';
+  }
+  tbody.innerHTML=html||'<tr><td colspan="5" class="empty">暂无记录</td></tr>';
+}
+
+// 页面加载时检查session
+window.onload=function(){
+  if(sessionStorage.getItem('wms_auth')==='1'){
+    initApp();
+  }
+};
+</script>
+</body>
+</html>
