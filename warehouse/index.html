@@ -193,7 +193,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 <body>
 
 <div class="topbar">
-  <div class="logo">📦 ACRO 包材WMS <span class="logo-tag">v2.4</span></div>
+  <div class="logo">📦 ACRO 包材WMS <span class="logo-tag">v2.5</span></div>
   <div class="topbar-right">
     <div class="mode-tabs">
       <button class="mode-btn active" id="btn-pick" onclick="setMode('pick')">取货</button>
@@ -227,7 +227,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
     <div id="scan-result-flash" style="display:none" class="scan-result-flash"></div>
   </div>
   <div class="scan-hint" id="scan-hint">将二维码对准框内</div>
-  <button class="scan-close" id="scan-close-btn" onclick="closeScanner()">关闭</button>
+  <div id="scan-session-log" style="width:min(320px,90vw);max-height:140px;overflow-y:auto;background:rgba(255,255,255,.06);border-radius:var(--radius);padding:8px 10px;display:none"></div>
+  <button class="scan-close" id="scan-close-btn" onclick="closeScanner()">完成扫码</button>
 </div>
 <div id="pick-view"></div>
 <div id="admin-view" style="display:none;padding:1rem 1.25rem;">
@@ -1059,7 +1060,7 @@ function renderAdminStock(el){
   for(var g=0;g<grps.length;g++){
     var gi=INV.filter(function(x){return x.grp===grps[g];});
     html+='<div class="card"><div class="card-title">'+tGrp(grps[g])+'</div><div class="tbl-wrap"><table class="tbl"><thead><tr>'
-      +'<th>'+T('colName')+'</th><th>'+T('colSpec')+'</th><th>'+T('colQty')+'</th><th>'+T('colAlert')+'</th><th>'+T('colStatus')+'</th><th>'+T('colSet')+'</th><th>'+T('colDel')+'</th>'
+      +'<th>'+T('colName')+'</th><th>'+T('colSpec')+'</th><th>'+T('colQty')+'</th><th>'+T('colAlert')+'</th><th>'+T('colStatus')+'</th><th>'+T('colSet')+'</th><th>编辑 / 删除</th>'
       +'</tr></thead><tbody>';
     for(var i=0;i<gi.length;i++){
       var item=gi[i],st=invSt(item),idx=INV.indexOf(item);
@@ -1079,6 +1080,7 @@ function renderAdminStock(el){
     html+='</tbody></table></div></div>';
   }
   el.innerHTML=html;
+  el.style.display=_scanSessionLog.length?'block':'none';
 }
 function setQty(idx){
   var el=document.getElementById('sq-'+idx);if(!el)return;
@@ -1421,8 +1423,11 @@ function renderAdminLog(el){
 // ══════════════════════════════════════════
 // SCANNER
 // ══════════════════════════════════════════
-var _scanStream=null, _scanRaf=null, _lastScannedCode='', _lastScannedTime=0;
-var SCAN_SAME_CODE_COOLDOWN=1500; // 同一个码1.5秒内不重复触发
+var _scanStream=null, _scanRaf=null;
+var _lastScannedCode='';      // last code seen (for disappear detection)
+var _lastSeenTime=0;          // last time any code was seen
+var _codeAbsent=true;         // true when no code in frame (allows re-scan same code)
+var _scanSessionLog=[];       // picks made during this scan session
 
 function toggleScanner(){
   var modal=document.getElementById('scan-modal');
@@ -1460,6 +1465,10 @@ function closeScanner(){
   if(_scanStream){_scanStream.getTracks().forEach(function(t){t.stop();});_scanStream=null;}
   document.getElementById('scan-modal').style.display='none';
   document.getElementById('scan-toggle-btn').classList.remove('active');
+  // clear session log for next session
+  _scanSessionLog=[];
+  var logEl=document.getElementById('scan-session-log');
+  if(logEl){logEl.innerHTML='';logEl.style.display='none';}
 }
 
 function scanFrame(){
@@ -1484,44 +1493,84 @@ function scanFrame(){
     }
   }
   if(code&&code.data){
-    var now=Date.now();
-    // 同一个码：冷却期内忽略（防止同一张二维码被连续触发）
-    // 不同的码：立即响应（操作员连续扫不同箱子不受影响）
-    var sameCode=(code.data===_lastScannedCode);
-    var inCooldown=(now-_lastScannedTime<SCAN_SAME_CODE_COOLDOWN);
-    if(!sameCode||!inCooldown){
-      onCodeScanned(code.data);
+    var data=code.data;
+    var sameCode=(data===_lastScannedCode);
+    if(!sameCode){
+      // different code — fire immediately
+      _codeAbsent=false;
+      _lastScannedCode=data;
+      _lastSeenTime=Date.now();
+      onCodeScanned(data);
+    } else {
+      // same code — only fire if it was absent from frame (user moved away and back)
+      if(_codeAbsent){
+        _codeAbsent=false;
+        _lastSeenTime=Date.now();
+        onCodeScanned(data);
+      } else {
+        _lastSeenTime=Date.now(); // keep tracking it's still present
+      }
     }
+  } else {
+    // no code in frame — mark absent after brief gap (100ms) to avoid flicker
+    if(Date.now()-_lastSeenTime>150) _codeAbsent=true;
   }
   _scanRaf=requestAnimationFrame(scanFrame);
 }
 
 function onCodeScanned(raw){
   var code=raw.trim().toUpperCase();
-  // 支持纯编号（S-13391）或带前缀的URL（?take=S-13391）
   var match=code.match(/(?:TAKE=)?([A-Z0-9][A-Z0-9-]+)/);
   if(!match)return;
   var itemId=match[1];
-  // 也尝试原始大小写
   var item=getItem(itemId)||getItem(raw.trim());
   if(!item){
-    document.getElementById('scan-hint').textContent=T('scanNoItem')+raw.trim()+T('scanCheck');
+    updateScanStatus('⚠ 未找到: '+raw.trim(), 'warn');
     return;
   }
-  // 记录本次扫码，用于同码冷却判断
-  _lastScannedCode=raw.trim();
-  _lastScannedTime=Date.now();
-  // 视觉反馈
+  if(item.qty<=0){
+    updateScanStatus('🔴 '+item.name+' 库存为零', 'warn');
+    return;
+  }
+  // flash
   var flash=document.getElementById('scan-result-flash');
-  flash.style.display='block';
-  setTimeout(function(){flash.style.display='none';},400);
-  document.getElementById('scan-hint').textContent='✓ '+item.name+'  '+T('scanNext');
-  setTimeout(function(){
-    document.getElementById('scan-hint').textContent=T('scanAim');
-  },1000);
-  // 取货（扫码默认取1个，符合操作员逐箱扫的习惯）
-  if(item.qty<=0){toast('⚠ '+item.name+' 库存为零');return;}
+  if(flash){flash.style.display='block';setTimeout(function(){flash.style.display='none';},350);}
+  // take item
   doTake(item,1);
+  // add to session log
+  var existing=null;
+  for(var i=0;i<_scanSessionLog.length;i++){
+    if(_scanSessionLog[i].id===item.id){existing=_scanSessionLog[i];break;}
+  }
+  if(existing){existing.qty++;} else {_scanSessionLog.push({id:item.id,name:item.name,qty:1});}
+  // update scan UI
+  updateScanStatus('✓ '+item.name+'  剩余 '+(item.qty), 'ok');
+  renderScanSessionLog();
+}
+
+function updateScanStatus(msg, type){
+  var el=document.getElementById('scan-hint');
+  if(!el)return;
+  el.textContent=msg;
+  el.style.color=type==='ok'?'var(--success)':type==='warn'?'var(--warn)':'var(--text2)';
+  if(type==='ok'){
+    setTimeout(function(){
+      if(el)el.textContent=T('scanAim');
+      if(el)el.style.color='';
+    },1200);
+  }
+}
+
+function renderScanSessionLog(){
+  var el=document.getElementById('scan-session-log');
+  if(!el||!_scanSessionLog.length)return;
+  var html='<div style="font-size:11px;color:var(--text2);margin-bottom:4px">本次扫码：</div>';
+  for(var i=_scanSessionLog.length-1;i>=0;i--){
+    var e=_scanSessionLog[i];
+    html+='<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.08)">'
+      +'<span>'+e.name+'</span><span style="font-weight:700;color:var(--success)">×'+e.qty+'</span></div>';
+  }
+  el.innerHTML=html;
 }
 
 function handleManualScan(val){
