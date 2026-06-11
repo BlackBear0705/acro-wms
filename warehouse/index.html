@@ -550,7 +550,7 @@ var LANG = {
   }
 };
 
-function T(key){ return LANG[currentLang][key] || LANG['zh'][key] || key; }
+function T(key){ if(typeof LANG==='undefined'||!LANG[currentLang])return key; return LANG[currentLang][key] || LANG['zh'][key] || key; }
 
 function toggleLang(){
   currentLang = currentLang==='zh' ? 'en' : 'zh';
@@ -589,7 +589,7 @@ function toggleLang(){
 var GRP_KEY = {
   '泡沫箱':'grpBox','一次性冰袋':'grpIce','蓝冰砖':'grpBrick','内包装盒':'grpInner','其他耗材':'grpSupply'
 };
-function tGrp(grp){ return currentLang==='en' && GRP_KEY[grp] ? T(GRP_KEY[grp]) : grp; }
+function tGrp(grp){ if(typeof LANG==='undefined')return grp; return currentLang==='en' && GRP_KEY[grp] ? T(GRP_KEY[grp]) : grp; }
 
 // Map log type zh→en
 var LOG_TYPE_EN = {'取货':'Pick','pick':'Pick','手动入库':'Manual In','手动调减':'Manual Adj','补货入库':'Restock','ULINE入库':'ULINE In','撤销取货':'Undo Pick','初始入库':'Initial In','删除物料':'Deleted'};
@@ -597,7 +597,7 @@ var LOG_TYPE_ZH = {'pick':'取货'};
 function tLogType(t){ if(currentLang==='en') return LOG_TYPE_EN[t]||t; return LOG_TYPE_ZH[t]||t; }
 
 var UNIT_EN = {'个':'pcs','块':'pcs','卷':'rolls','双':'pairs','张':'sheets'};
-function tUnit(u){ return currentLang==='en' && UNIT_EN[u] ? UNIT_EN[u] : u; }
+function tUnit(u){ if(typeof LANG==='undefined')return u; return currentLang==='en' && UNIT_EN[u] ? UNIT_EN[u] : u; }
 
 
 // ══════════════════════════════════════════
@@ -991,10 +991,16 @@ function updatePinDots(){for(var i=0;i<4;i++){var el=document.getElementById('pd
 // ══════════════════════════════════════════
 var currentAdminTab='stock',restockSel={};
 function renderAdminTabs(){
-  var labels={stock:T('tabStock'),uline:T('tabUline'),restock:T('tabRestock'),add:T('tabAdd'),teams:T('tabTeams'),log:T('tabLog')};
-  ['stock','uline','restock','add','teams','log'].forEach(function(t){
+  var tabIds=['stock','uline','restock','add','teams','log'];
+  var tabKeys=['tabStock','tabUline','tabRestock','tabAdd','tabTeams','tabLog'];
+  tabIds.forEach(function(t,i){
     var el=document.getElementById('atab-'+t);
-    if(el){el.className='admin-tab'+(t===currentAdminTab?' active':'');el.textContent=labels[t];}
+    if(el){
+      el.className='admin-tab'+(t===currentAdminTab?' active':'');
+      var label=T(tabKeys[i]);
+      // only update text if T() returned a real translation (not just the key)
+      if(label!==tabKeys[i])el.textContent=label;
+    }
   });
 }
 function switchAdminTab(t){currentAdminTab=t;renderAdminTabs();renderAdminContent();}
