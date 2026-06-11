@@ -6,6 +6,14 @@
 <title>ACRO Warehouse WMS</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<script>
+// Fallback: if jsQR failed to load from CDN, try unpkg
+if(typeof jsQR==='undefined'){
+  var s=document.createElement('script');
+  s.src='https://unpkg.com/jsqr@1.4.0/dist/jsQR.js';
+  document.head.appendChild(s);
+}
+</script>
 <style>
 :root {
   --bg:#0d1117;--bg2:#161b22;--bg3:#21262d;--border:#30363d;
@@ -146,6 +154,10 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .pin-err{font-size:11px;color:var(--danger);height:14px;}
 .toast{position:fixed;bottom:72px;left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:9px 18px;border-radius:var(--radius);font-size:13px;z-index:999;opacity:0;transition:opacity .2s;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4);pointer-events:none;}
 .toast.show{opacity:1;}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:2rem 1rem;z-index:100;overflow-y:auto;}
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);width:100%;max-width:500px;padding:1.5rem;}
+.modal-title{font-size:16px;font-weight:600;margin-bottom:1rem;}
+.modal-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);}
 .empty{text-align:center;padding:2rem;color:var(--text3);font-size:13px;}
 
 /* ── LANG ── */
@@ -181,7 +193,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 <body>
 
 <div class="topbar">
-  <div class="logo">📦 ACRO 包材WMS <span class="logo-tag">v2.3</span></div>
+  <div class="logo">📦 ACRO 包材WMS <span class="logo-tag">v2.4</span></div>
   <div class="topbar-right">
     <div class="mode-tabs">
       <button class="mode-btn active" id="btn-pick" onclick="setMode('pick')">取货</button>
@@ -271,6 +283,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 </div>
 
 <!-- Undo banner (injected dynamically) -->
+<div id="modal-root"></div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -345,6 +358,7 @@ var LANG = {
     btnClear:     '清除',
     btnConfirm:   '确认入库',
     btnAdd:       '添加物料',
+    btnEdit:      '编辑',
     pinTitle:     '🔐 管理员访问',
     pinSub:       '请输入管理员 PIN 码',
     pinClear:     '清除',
@@ -475,6 +489,7 @@ var LANG = {
     btnClear:     'Clear',
     btnConfirm:   'Confirm Restock',
     btnAdd:       'Add Item',
+    btnEdit:      'Edit',
     pinTitle:     '🔐 Admin Access',
     pinSub:       'Enter admin PIN',
     pinClear:     'Clear',
@@ -825,10 +840,13 @@ function toast(msg){var t=document.getElementById('toast');t.textContent=msg;t.c
 var currentMode='pick';
 function setMode(m){
   currentMode=m;
+  // clear undo stack when switching modes
+  _undoStack=[];clearUndoBanner();
   document.getElementById('btn-pick').className='mode-btn'+(m==='pick'?' active':'');
   document.getElementById('btn-admin').className='mode-btn'+(m==='admin'?' active':'');
   document.getElementById('pick-view').style.display=m==='pick'?'block':'none';
   document.getElementById('admin-view').style.display=m==='admin'?'block':'none';
+  if(m==='pick'){renderPickView();}  // always re-render pick view with latest data
   if(m==='admin'){currentAdminTab='stock';renderAdminTabs();renderAdminContent();}
 }
 
@@ -874,7 +892,7 @@ function updateTile(id,item){
 }
 
 // ── UNDO system ──
-var _undoData=null, _undoTimer=null, _undoEl=null, _undoFillTimer=null;
+var _undoStack=[], _undoTimer=null, _undoEl=null, _undoFillTimer=null;
 
 function takeOne(id){
   var item=getItem(id);if(!item||item.qty<=0){toast(T('zeroStock'));return;}
@@ -902,12 +920,13 @@ function doTake(item,qty){
   );
 }
 function showUndoBanner(item,qty,logEntry){
+  // push onto undo stack (each pick is independently undoable)
+  _undoStack.push({item:item,qty:qty,logEntry:logEntry});
   clearUndoBanner();
-  _undoData={item:item,qty:qty,logEntry:logEntry};
   var el=document.createElement('div');
   el.className='undo-banner';
   el.id='undo-banner';
-  el.innerHTML='<span>取 '+item.name+' ×'+qty+'  剩余 '+item.qty+'</span>'
+  el.innerHTML='<span>取 '+item.name+' ×'+qty+'  剩余 '+item.qty+(_undoStack.length>1?' (可撤销'+_undoStack.length+'步)':'')+'</span>'
     +'<div class="undo-bar"><div class="undo-fill" id="undo-fill" style="width:100%"></div></div>'
     +'<button class="undo-btn" onclick="doUndo()">'+T('undoBtn')+'</button>';
   document.body.appendChild(el);
@@ -925,20 +944,33 @@ function showUndoBanner(item,qty,logEntry){
 function clearUndoBanner(){
   clearTimeout(_undoTimer);clearInterval(_undoFillTimer);
   if(_undoEl&&_undoEl.parentNode)_undoEl.parentNode.removeChild(_undoEl);
-  _undoEl=null;_undoData=null;
+  _undoEl=null;
+  // NOTE: _undoStack is NOT cleared here — it expires via timer per entry
 }
 function doUndo(){
-  if(!_undoData)return;
-  var item=_undoData.item,qty=_undoData.qty,logEntry=_undoData.logEntry;
-  // 乐观更新
+  if(!_undoStack.length)return;
+  var entry=_undoStack.pop();
+  var item=entry.item,qty=entry.qty,logEntry=entry.logEntry;
   item.qty+=qty;
   updateTile(item.id,item);
   clearUndoBanner();
   toast(T('undoing'));
-  // 原子撤销：服务器端 +qty，同时删掉原始日志条目
   atomicUndo(item,qty,logEntry._fbKey||null,function(){
     updateTile(item.id,item);
     toast(T('undoDone')+item.name+T('undoCur')+item.qty);
+    // show banner for next undo if stack still has entries
+    if(_undoStack.length>0){
+      var next=_undoStack[_undoStack.length-1];
+      var el=document.createElement('div');
+      el.className='undo-banner';el.id='undo-banner';
+      el.innerHTML='<span>还可撤销: '+next.item.name+' ×'+next.qty+' (共'+_undoStack.length+'步)</span>'
+        +'<button class="undo-btn" onclick="doUndo()">'+T('undoBtn')+'</button>';
+      document.body.appendChild(el);
+      _undoEl=el;
+      _undoTimer=setTimeout(function(){
+        _undoStack=[];clearUndoBanner();
+      }, 8000);
+    }
   });
 }
 
@@ -1055,6 +1087,8 @@ function setQty(idx){
   if(diff!==0)LOGS.unshift({dt:dtNow(),id:INV[idx].id,name:INV[idx].name,qty:Math.abs(diff),type:diff>0?'手动入库':'手动调减'});
   INV[idx].qty=v;
   renderAdminStock(document.getElementById('admin-content'));
+  // update pick view tile in background so switching back shows correct value
+  updateTile(INV[idx].id, INV[idx]);
   schedSave();toast('✓ '+INV[idx].name+T('setOk')+v);
 }
 function delItem(idx){
@@ -1324,6 +1358,51 @@ function sendTeamsMessage(url,text,cb){
   }).then(function(r){cb(r.ok);}).catch(function(){cb(false);});
 }
 
+
+// ── Edit Item ──
+function openEditItem(idx){
+  var item=INV[idx];if(!item)return;
+  var grps=[];for(var i=0;i<INV.length;i++){if(grps.indexOf(INV[i].grp)===-1)grps.push(INV[i].grp);}
+  var html='<div class="modal-overlay" onclick="if(event.target.className===\'modal-overlay\')closeEditItem()">'
+    +'<div class="modal">'
+    +'<div class="modal-title">编辑物料</div>'
+    +'<div class="form2">'
+    +'<div class="field"><label>编号/名称</label><input type="text" id="ei-id" value="'+item.name+'"/></div>'
+    +'<div class="field"><label>规格描述</label><input type="text" id="ei-desc" value="'+item.desc+'"/></div>'
+    +'</div>'
+    +'<div class="form2">'
+    +'<div class="field"><label>分组</label><select id="ei-grp">'+grps.map(function(g){return'<option value="'+g+'"'+(g===item.grp?' selected':'')+'>'+g+'</option>';}).join('')+'</select></div>'
+    +'<div class="field"><label>单位</label><input type="text" id="ei-unit" value="'+item.unit+'"/></div>'
+    +'</div>'
+    +'<div class="form2">'
+    +'<div class="field"><label>低库存预警值</label><input type="number" id="ei-low" min="1" value="'+item.low+'"/></div>'
+    +'<div class="field"><label>包装单位（1箱=?个，ULINE导入用）</label><input type="number" id="ei-pack" min="1" value="'+(item.packUnit||1)+'"/></div>'
+    +'</div>'
+    +'<div class="modal-footer">'
+    +'<button class="btn" onclick="closeEditItem()">取消</button>'
+    +'<button class="btn btn-p" onclick="saveEditItem('+idx+')">保存</button>'
+    +'</div>'
+    +'</div></div>';
+  document.getElementById('modal-root').innerHTML=html;
+}
+function closeEditItem(){document.getElementById('modal-root').innerHTML='';}
+function saveEditItem(idx){
+  var item=INV[idx];if(!item)return;
+  var newId=(document.getElementById('ei-id').value||'').trim();
+  var newDesc=(document.getElementById('ei-desc').value||'').trim();
+  var newGrp=document.getElementById('ei-grp').value;
+  var newUnit=(document.getElementById('ei-unit').value||'个').trim();
+  var newLow=parseInt(document.getElementById('ei-low').value)||10;
+  var newPack=parseInt(document.getElementById('ei-pack').value)||1;
+  if(!newId){toast('编号不能为空');return;}
+  // update
+  item.name=newId;item.id=newId;item.desc=newDesc;
+  item.grp=newGrp;item.unit=newUnit;item.low=newLow;item.packUnit=newPack;
+  closeEditItem();
+  renderAdminStock(document.getElementById('admin-content'));
+  if(currentMode==='pick')renderPickView();
+  schedSave();toast('✓ 已更新：'+newId);
+}
 // ── Log ──
 function renderAdminLog(el){
   var html='<div class="card"><div class="card-title">'+T('logTitle')+' <span style="font-size:11px;color:var(--text2)">'+T('logRecent')+'</span></div>'
@@ -1393,8 +1472,16 @@ function scanFrame(){
   ctx.drawImage(video,0,0,canvas.width,canvas.height);
   var imgData=ctx.getImageData(0,0,canvas.width,canvas.height);
   var code=null;
-  if(typeof jsQR==='function'){
-    code=jsQR(imgData.data,imgData.width,imgData.height,{inversionAttempts:'dontInvert'});
+  var _jsqr=typeof jsQR==='function'?jsQR:(typeof window.jsQR==='function'?window.jsQR:null);
+  if(_jsqr){
+    try{code=_jsqr(imgData.data,imgData.width,imgData.height,{inversionAttempts:'dontInvert'});}
+    catch(e){code=null;}
+  } else {
+    // jsQR not loaded — show warning once
+    if(!window._jsqrWarnShown){
+      window._jsqrWarnShown=true;
+      document.getElementById('scan-hint').textContent='扫码库未加载，请检查网络后刷新页面';
+    }
   }
   if(code&&code.data){
     var now=Date.now();
