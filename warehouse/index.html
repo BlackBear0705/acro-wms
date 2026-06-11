@@ -1074,13 +1074,15 @@ function renderAdminStock(el){
         +'<input class="qty-inp" type="number" min="0" value="'+item.qty+'" id="sq-'+idx+'"/>'
         +'<button class="btn btn-sm btn-success" onclick="setQty('+idx+')">'+T('btnSet')+'</button>'
         +'</td>'
-        +'<td><button class="btn btn-sm btn-danger" onclick="delItem('+idx+')">'+T('btnDel')+'</button></td>'
+        +'<td style="white-space:nowrap;display:flex;gap:5px">'
+        +'<button class="btn btn-sm" onclick="openEditItem('+idx+')" style="color:var(--accent);border-color:rgba(47,129,247,.3)">✏️</button>'
+        +'<button class="btn btn-sm btn-danger" onclick="delItem('+idx+')">🗑</button>'
+        +'</td>'
         +'</tr>';
     }
     html+='</tbody></table></div></div>';
   }
   el.innerHTML=html;
-  el.style.display=_scanSessionLog.length?'block':'none';
 }
 function setQty(idx){
   var el=document.getElementById('sq-'+idx);if(!el)return;
