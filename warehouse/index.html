@@ -1456,8 +1456,8 @@ function exportLogExcel(filter){
   var restock_types=['手动入库','补货入库','ULINE入库','初始入库','Manual In','ULINE In','Initial In','Restock In'];
   var pick_types=['pick','取货','Pick'];
   var logs=LOGS;
-  if(filter==='pick') logs=LOGS.filter(function(l){return pick_types.indexOf(l.type)>-1;});
-  if(filter==='restock') logs=LOGS.filter(function(l){return restock_types.indexOf(l.type)>-1;});
+  if(filter===1||filter==='pick') logs=LOGS.filter(function(l){return pick_types.indexOf(l.type)>-1;});
+  if(filter===2||filter==='restock') logs=LOGS.filter(function(l){return restock_types.indexOf(l.type)>-1;});
 
   // Sheet: Log
   var rows=[['日期','时间','类型','物料ID','物料名称','数量']];
@@ -1470,7 +1470,7 @@ function exportLogExcel(filter){
   var ws=XLSX.utils.aoa_to_sheet(rows);
   ws['!cols']=[{wch:12},{wch:14},{wch:12},{wch:14},{wch:40},{wch:8}];
   ws['!freeze']={xSplit:0,ySplit:1};
-  var sheetName=filter==='pick'?'取货记录':filter==='restock'?'入库记录':'全部记录';
+  var sheetName=(filter===1||filter==='pick')?'取货记录':(filter===2||filter==='restock')?'入库记录':'全部记录';
   XLSX.utils.book_append_sheet(wb,ws,sheetName);
 
   // Sheet 2: Daily summary (pivot by date)
@@ -1506,8 +1506,8 @@ function exportLogExcel(filter){
 function renderAdminLog(el){
   var html='<div style="display:flex;gap:8px;margin-bottom:.75rem;flex-wrap:wrap">'
     +'<button class="btn btn-sm btn-success" onclick="exportLogExcel()">⬇ 导出记录 Excel</button>'
-    +'<button class="btn btn-sm" onclick="exportLogExcel(\"pick\")">仅取货记录</button>'
-    +'<button class="btn btn-sm" onclick="exportLogExcel(\"restock\")">仅入库记录</button>'
+    +'<button class="btn btn-sm" onclick="exportLogExcel(1)">仅取货记录</button>'
+    +'<button class="btn btn-sm" onclick="exportLogExcel(2)">仅入库记录</button>'
     +'</div>'
     +'<div class="card"><div class="card-title">'+T('logTitle')+' <span style="font-size:11px;color:var(--text2)">最近500条 · 历史数据保留90天</span></div>'
     +'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>'+T('logTime')+'</th><th>'+T('logType')+'</th><th>'+T('logItem')+'</th><th>'+T('logQty')+'</th></tr></thead><tbody>';
